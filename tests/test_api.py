@@ -9,6 +9,7 @@ def test_vocabulary(client):
 def test_tokenize(client):
     body = client.post("/tokenize", json={"text": "cat run"}).json()
     assert body["tokens"] == ["cat", "run"] and len(body["ids"]) == 2
+    assert body["coverage"]["unknown_token_count"] == 0
 
 
 @pytest.mark.parametrize(
@@ -40,3 +41,10 @@ def test_visualize_png_and_errors(client):
     assert r.headers["content-type"] == "image/png" and r.content[:4] == b"\x89PNG"
     assert client.post("/visualize/nope", json={"text": "cat"}).status_code == 404
     assert client.post("/predict", json={"text": "!!!"}).status_code == 422
+
+
+def test_generate(client):
+    r = client.post("/generate", json={"text": "cat run", "steps": 2})
+    body = r.json()
+    assert r.status_code == 200
+    assert body["steps"] == 2 and len(body["generated"]) == 2

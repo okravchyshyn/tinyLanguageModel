@@ -46,6 +46,20 @@ def test_pipeline_shapes_and_persistence(built):
     assert n == 5
 
 
+def test_tokenization_reports_coverage_and_generation(built):
+    _, engine, params = built
+    pipe = Pipeline(params, engine)
+    tr = pipe.trace("cat mysteryword")
+    tok = pipe.tokenization(tr)
+    assert tok["coverage"]["unknown_token_count"] == 1
+    assert 0 <= tok["coverage"]["vocabulary_coverage"] < 1
+
+    gen = pipe.generate("cat run", steps=2)
+    assert gen["steps"] == 2
+    assert len(gen["generated"]) == 2
+    assert isinstance(gen["final_text"], str) and gen["final_text"]
+
+
 def test_empty_text_rejected(built):
     _, engine, params = built
     with pytest.raises(EmptyTextError):

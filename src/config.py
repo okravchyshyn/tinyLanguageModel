@@ -16,5 +16,5 @@ VOCAB_SIZE = 1000  # real words (~500; large enough to include the demo word "fa
 EMBED_DIM = 32  # intentionally tiny so vectors fit on screen
 SEED = 42
 UNK = "<unk>"
-TRAIN_STEPS = 10000  # Adam steps for Wq/Wk/Wv/Wout
+TRAIN_STEPS = 1500  # reduced so first-time `python examples/build_model.py` is much faster in local demos
 TRAIN_WINDOW = 12  # words per training window

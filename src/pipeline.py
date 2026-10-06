@@ -14,7 +14,7 @@ from src.attention import attention as att
 from src.attention.explanations import qkv_human_explanation, token_explanation
 from src.embeddings.embedder import cosine, most_similar
 from src.model import ModelParams
-from src.prediction.predictor import next_token_distribution, top_k
+from src.prediction.predictor import greedy_generate, next_token_distribution, top_k
 from src.trace import Trace
 
 STAGES = ["tokenize", "embeddings", "qkv", "scores", "matrix", "weighted", "hidden", "predict"]
@@ -94,8 +94,14 @@ class Pipeline:
     # ---- stage views -------------------------------------------------
     def tokenization(self, tr: Trace) -> dict:
         unknown = [t for t, i in zip(tr.tokens, tr.ids) if i == 0]
+        coverage = 1.0 - (len(unknown) / max(len(tr.ids), 1))
         return {
             "run_id": tr.run_id, "text": tr.text, "tokens": tr.tokens, "ids": tr.ids, "unknown_tokens": unknown,
+            "coverage": {
+                "known_token_count": len(tr.ids) - len(unknown),
+                "unknown_token_count": len(unknown),
+                "vocabulary_coverage": round(coverage, 4),
+            },
             "math_view": {"lookup": [{"token": t, "id": i} for t, i in zip(tr.tokens, tr.ids)]},
             "human_view": (
                 "The model cannot read letters, only numbers. Each word is looked up in the vocabulary and replaced "
@@ -239,9 +245,24 @@ class Pipeline:
 
     def prediction(self, tr: Trace) -> dict:
         shown = tr.top
+        unk_count = sum(1 for token_id in tr.ids if token_id == 0)
+        coverage = 1.0 - (unk_count / max(len(tr.ids), 1))
+        warning = None
+        if unk_count:
+            warning = (
+                f"{unk_count} of {len(tr.ids)} input tokens are out of vocabulary and were mapped to <unk>. "
+                "Predictions may look unreasonable because this tiny word-level model can only use words it has seen often enough in the training corpus."
+            )
         return {
             "run_id": tr.run_id, "text": tr.text,
             "top_predictions": [{"token": t["token"], "probability": round(t["probability"], 4)} for t in shown],
+            "input_diagnostics": {
+                "tokens": tr.tokens,
+                "token_ids": tr.ids,
+                "vocabulary_coverage": round(coverage, 4),
+                "unknown_token_count": unk_count,
+                "warning": warning,
+            },
             "math_view": {
                 "formula": "logits = H[last] . Wout + b;  probabilities = softmax(logits)",
                 "last_token": tr.tokens[-1],
@@ -251,9 +272,33 @@ class Pipeline:
             "human_view": (
                 f'Only the last token ("{tr.tokens[-1]}") is used: its context-aware vector is scored against every '
                 "vocabulary word, and softmax converts the scores into probabilities. The tiny model has only seen "
-                "word-pair statistics from the corpus, so suggestions reflect common word pairs, not real understanding."
+                "word-pair statistics from the corpus, so suggestions reflect common word pairs, not real understanding. "
+                + ("Some of your input words are outside the vocabulary and were replaced with <unk>, which usually makes the result much worse."
+                   if unk_count else "")
             ),
             "visual_view": {"png": "/visualize/predictions"},
+        }
+
+    def generate(self, text: str, steps: int = 3) -> dict:
+        tr = self.trace(text, causal=True, top_n=5)
+        generated = greedy_generate(
+            tr.tokens,
+            tr.ids,
+            self.p.emb,
+            self.p.wq,
+            self.p.wk,
+            self.p.wv,
+            self.p.wout,
+            self.p.bias,
+            self.p.words,
+            steps,
+        )
+        return {
+            "run_id": tr.run_id,
+            "text": text,
+            "steps": steps,
+            "generated": generated,
+            "final_text": " ".join(tr.tokens + [g["token"] for g in generated]),
         }
 
     def explain(self, tr: Trace, similar_n: int = 5) -> dict:

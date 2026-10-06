@@ -51,5 +51,4 @@ def main(texts: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    #main(sys.argv[1:] or ["cat run", "dog eat"])
-    main(sys.argv[1:] or ["A boat of the little"])
+    main(sys.argv[1:] or ["cat run", "dog eat"])

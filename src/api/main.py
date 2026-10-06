@@ -31,6 +31,10 @@ class ExplainRequest(TextRequest):
     include_plots: bool = False
 
 
+class GenerateRequest(TextRequest):
+    steps: int = Field(3, ge=1, le=20)
+
+
 def create_app(db_path: Optional[Path] = None, model_path: Optional[Path] = None) -> FastAPI:
     db_path = db_path or config.DB_PATH
     model_path = model_path or config.MODEL_PATH
@@ -102,6 +106,13 @@ def create_app(db_path: Optional[Path] = None, model_path: Optional[Path] = None
     def predict(request: Request, body: TextRequest):
         pipe, tr = run(request, body, "predict")
         return pipe.prediction(tr)
+
+    @app.post("/generate")
+    def generate(request: Request, body: GenerateRequest):
+        try:
+            return request.app.state.pipeline.generate(body.text, body.steps)
+        except EmptyTextError as e:
+            raise HTTPException(422, str(e))
 
     @app.post("/explain")
     def explain(request: Request, body: ExplainRequest):
